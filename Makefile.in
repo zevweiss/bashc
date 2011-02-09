@@ -1211,7 +1211,8 @@ pcomplete.o: externs.h ${BASHINCDIR}/maxpath.h execute_cmd.h
 pcomplete.o: ${BASHINCDIR}/shmbutil.h ${BASHINCDIR}/shmbchar.h
 pcomplete.o: ${DEFDIR}/builtext.h
 
-compiler.o: config.h shell.h compiler.h flags.h
+compiler.o: config.h shell.h compiler.h flags.h builtins.h $(DEFSRC)/common.h
+compiler.o: $(DEFSRC)/builtext.h
 
 # library support files
 
