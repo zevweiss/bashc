@@ -16,6 +16,8 @@
 #include "builtins/common.h"
 #include "builtins/builtext.h"
 
+#include "y.tab.h"
+
 #include "compiler.h"
 
 #define NYI(...) internal_warning("NYI: compilation of "__VA_ARGS__)
@@ -28,22 +30,38 @@ static const char bashc_header[] =
 "#include <sys/types.h>\n"
 "#include <sys/wait.h>\n"
 "\n"
+"int exec_argv(char* const argv[])\n"
+"{\n"
+	"\tpid_t pid;\n"
+	"\tint status;\n"
+	"\n"
+	"\tif (!(pid = fork())) {\n"
+		"\t\t/* child */\n"
+		"\t\texecvp(argv[0],argv);\n"
+		"\t\tperror(\"execvp\");\n"
+		"\t\texit(1);\n"
+	"\t} else if (pid == -1) {\n"
+		"\t\t/* fork failed */\n"
+		"\t\treturn 1;\n"
+	"\t} else {\n"
+		"\t\t/* parent */\n"
+		"\t\twaitpid(pid,&status,0);\n"
+		"\t\treturn status;\n"
+	"\t}\n"
+"}\n"
+"\n"
 "int main(int argc, char** argv)\n"
 "{\n"
-	"\tint mainret;\n"
-	"\tint last_cmd_exit_status;\n"
-	"\tpid_t pid;\n"
+	"\tint G_status;\n"
 	"\n"
 	"\t(void)argc;\n"
 	"\t(void)argv;\n"
-	"\t(void)last_cmd_exit_status;\n"
-	"\t(void)pid;\n"
-	"\tmainret = 0;\n"
+	"\tG_status = 0;\n"
 	"\n"
 ;
 
 static const char bashc_footer[] =
-	"\treturn mainret;\n"
+	"\treturn G_status;\n"
 "}\n"
 ;
 
@@ -57,8 +75,9 @@ static void indent(void)
 }
 
 #define cout(...) fprintf(bashc_output,__VA_ARGS__)
+#define coutn(...) do { fprintf(bashc_output,__VA_ARGS__); cout("\n"); } while (0)
 #define icout(...) do { indent(); cout(__VA_ARGS__); } while (0)
-#define icoutn(...) do { indent(); cout(__VA_ARGS__); cout(";\n"); } while (0)
+#define icoutsn(...) do { indent(); cout(__VA_ARGS__); cout(";\n"); } while (0)
 
 #define make_cif(...) do { \
 		indent(); \
@@ -93,6 +112,9 @@ static void indent(void)
 		cout(" */\n"); \
 	} while (0)
 
+#define startblock() do { icout("{\n"); ++indent_level; } while (0)
+#define endblock() do { --indent_level; icout("}\n"); } while (0)
+
 static void cencode_string(const char* str)
 {
 	int i;
@@ -117,6 +139,17 @@ static void cencode_string(const char* str)
 	}
 }
 
+/* Returns a pointer to a malloc()ed string of the name of a new
+ * variable, with option "base" name */
+static char* new_variable(const char* base)
+{
+	static unsigned int idnum = 0;
+	char buf[128];
+	const char* baseid = base ? base : "var";
+	sprintf(buf,"%s%u",base,idnum++);
+	return strdup(buf);
+}
+
 static void wordlist_to_cstr_array(WORD_LIST* wds, int addnullterm)
 {
 	WORD_LIST* wd;
@@ -135,6 +168,9 @@ static void wordlist_to_cstr_array(WORD_LIST* wds, int addnullterm)
 	cout("}");
 }
 
+static void compile_simple_command(COMMAND* cmd, int override_builtin);
+static void compile_command(COMMAND* cmd);
+
 static void comment_simple_command(struct simple_com* sc)
 {
 	WORD_LIST* word;
@@ -145,8 +181,6 @@ static void comment_simple_command(struct simple_com* sc)
 	cout(" */\n");
 }
 
-static void compile_simple_command(COMMAND* cmd, int override_builtin);
-
 static void compile_builtin(sh_builtin_func_t* builtin, COMMAND* cmd)
 {
 	struct simple_com* sc = cmd->value.Simple;
@@ -154,7 +188,7 @@ static void compile_builtin(sh_builtin_func_t* builtin, COMMAND* cmd)
 	if (builtin == cd_builtin) {
 		comment_simple_command(sc);
 		make_cif("chdir(\"%s\")",sc->words->next->word->word);
-		icoutn("perror(\"chdir\")");
+		icoutsn("perror(\"chdir\")");
 		make_cendif();
 		cout("\n");
 	} else if (builtin == echo_builtin) {
@@ -169,6 +203,7 @@ static void compile_simple_command(COMMAND* cmd, int override_builtin)
 {
 	sh_builtin_func_t* builtin;
 	struct simple_com* sc = cmd->value.Simple;
+	char* argvname = new_variable("argv");
 
 	if (sc->redirects) {
 		NYI("redirects");
@@ -183,24 +218,88 @@ static void compile_simple_command(COMMAND* cmd, int override_builtin)
 
 	comment_simple_command(sc);
 
-	make_cif("!(pid = fork())");
-
-	ccomment("child");
-	icout("static char* const argv[] = ");
+	startblock();
+	icout("static char* const %s[] = ",argvname);
 	wordlist_to_cstr_array(sc->words,1);
 	cout(";\n");
-	icoutn("execvp(argv[0],argv)");
-	icoutn("perror(\"execvp\")");
-	icoutn("exit(1)");
+	icoutsn("G_status = exec_argv(%s)",argvname);
+	endblock();
+	cout("\n");
+
+	free(argvname);
+}
+
+static int pipe_length(COMMAND* head)
+{
+	COMMAND* next = head;
+	int len = 1;
+	for (;;) {
+		if (next->type != cm_connection)
+			return len;
+		if (next->value.Connection->connector != '|')
+			return len;
+		++len;
+		next = next->value.Connection->second;
+	}
+}
+
+static void compile_pipe(COMMAND* first, COMMAND* second)
+{
+	char* pipeends;
+	char* pids;
+	int i;
+	int len = pipe_length(second);
+
+	pipeends = new_variable("pipe");
+	pids = new_variable("pids");
+
+	startblock();
+
+	icoutsn("int %s[%d][2]",pipeends,len);
+
+	icout("if (!pipe(%s[0])",pipeends);
+	for (i = 1; i < len; i++)
+		cout(" && !pipe(%s[%i])",pipeends,i);
+	coutn(") {");
+	++indent_level;
 
 	make_celse();
 
-	ccomment("parent");
-	icoutn("waitpid(pid,&last_cmd_exit_status,0)");
-	icoutn("mainret = last_cmd_exit_status");
+	icoutsn("perror(\"pipe\")");
 
 	make_cendif();
+
+	endblock();
 	cout("\n");
+
+	free(pipeends);
+	free(pids);
+}
+
+static void compile_connection(COMMAND* cmd)
+{
+	struct connection* conn = cmd->value.Connection;
+
+	switch (cmd->value.Connection->connector) {
+	case ';':
+		compile_command(conn->first);
+		compile_command(conn->second);
+		break;
+
+	case '|':
+		compile_pipe(conn->first,conn->second);
+		return;
+
+	case '&':
+	case AND_AND:
+	case OR_OR:
+		NYI("&, &&, and || connectors");
+		return;
+
+	default:
+		fatal_error("bad connector type in compile_connection");
+		
+	}
 }
 
 static void compile_command(COMMAND* cmd)
@@ -229,10 +328,7 @@ static void compile_command(COMMAND* cmd)
 		break;
 
 	case cm_connection:
-		if (cmd->value.Connection->connector != ';')
-			internal_warning("non-';' connections");
-		compile_command(cmd->value.Connection->first);
-		compile_command(cmd->value.Connection->second);
+		compile_connection(cmd);
 		break;
 
 	default:
