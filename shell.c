@@ -198,6 +198,11 @@ int have_devfd = HAVE_DEV_FD;
 int have_devfd = 0;
 #endif
 
+#ifdef COMPILER
+char* bashc_outpath = NULL;
+FILE* bashc_output = NULL;
+#endif
+
 /* The name of the .(shell)rc file. */
 static char *bashrc_file = DEFAULT_BASHRC;
 
@@ -271,6 +276,9 @@ static const struct {
   { "version", Int, &do_version, (char **)0x0 },
 #if defined (WORDEXP_OPTION)
   { "wordexp", Int, &wordexp_only, (char **)0x0 },
+#endif
+#if defined (COMPILER)
+  { "compile", Charp, (int *)0x0, &bashc_outpath },
 #endif
   { (char *)0x0, Int, (int *)0x0, (char **)0x0 }
 };
@@ -534,7 +542,17 @@ main (argc, argv, env)
 	read_from_stdin) &&		/*   -s flag with args, and */
        isatty (fileno (stdin)) &&	/* Input is a terminal and */
        isatty (fileno (stderr))))	/* error output is a terminal. */
-    init_interactive ();
+    {
+#if defined (COMPILER)
+      if (bashc_outpath)
+	{
+	  report_error ("interactive compilation not supported");
+	  exit (EX_BADUSAGE);
+	}
+      else
+#endif
+	init_interactive ();
+    }
   else
     init_noninteractive ();
 
@@ -788,8 +806,13 @@ main (argc, argv, env)
 
   shell_initialized = 1;
 
-  /* Read commands until exit condition. */
-  reader_loop ();
+#if defined(COMPILER)
+  if (bashc_outpath)
+    compile_input ();
+  else
+#endif
+    /* Read commands until exit condition. */
+    reader_loop ();
   exit_shell (last_command_exit_value);
 }
 
@@ -920,6 +943,18 @@ parse_shell_options (argv, arg_start, arg_end)
 	    case 'D':
 	      dump_translatable_strings = 1;
 	      break;
+
+#if defined (COMPILER)
+	    case 'X':
+	      bashc_outpath = argv[next_arg];
+	      if (bashc_outpath == 0)
+		{
+		  report_error ("-X requires an argument");
+		  exit (EX_BADUSAGE);
+		}
+	      next_arg++;
+	      break;
+#endif
 
 	    default:
 	      if (change_flag (arg_character, on_or_off) == FLAG_ERROR)

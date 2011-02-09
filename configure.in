@@ -186,6 +186,7 @@ opt_single_longdoc_strings=yes
 opt_casemod_attrs=yes
 opt_casemod_expansions=yes
 opt_extglob_default=no
+opt_compiler=no
 
 dnl options that affect how bash is compiled and linked
 opt_static_link=no
@@ -220,6 +221,7 @@ AC_ARG_ENABLE(cond-command, AC_HELP_STRING([--enable-cond-command], [enable the 
 AC_ARG_ENABLE(cond-regexp, AC_HELP_STRING([--enable-cond-regexp], [enable extended regular expression matching in conditional commands]), opt_cond_regexp=$enableval)
 AC_ARG_ENABLE(coprocesses, AC_HELP_STRING([--enable-coprocesses], [enable coprocess support and the coproc reserved word]), opt_coproc=$enableval)
 AC_ARG_ENABLE(debugger, AC_HELP_STRING([--enable-debugger], [enable support for bash debugger]), opt_debugger=$enableval)
+AC_ARG_ENABLE(compiler, AC_HELP_STRING([--enable-compiler], [enable compilation mode]), opt_compiler=$enableval)
 AC_ARG_ENABLE(directory-stack, AC_HELP_STRING([--enable-directory-stack], [enable builtins pushd/popd/dirs]), opt_dirstack=$enableval)
 AC_ARG_ENABLE(disabled-builtins, AC_HELP_STRING([--enable-disabled-builtins], [allow disabled builtins to still be invoked]), opt_disabled_builtins=$enableval)
 AC_ARG_ENABLE(dparen-arithmetic, AC_HELP_STRING([--enable-dparen-arithmetic], [include ((...)) command]), opt_dparen_arith=$enableval)
@@ -326,6 +328,9 @@ AC_DEFINE(NO_MULTIBYTE_SUPPORT)
 fi
 if test $opt_debugger = yes; then
 AC_DEFINE(DEBUGGER)
+fi
+if test $opt_compiler = yes; then
+AC_DEFINE(COMPILER)
 fi
 if test $opt_casemod_attrs = yes; then
 AC_DEFINE(CASEMOD_ATTRS)

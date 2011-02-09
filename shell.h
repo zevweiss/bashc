@@ -99,6 +99,11 @@ extern int shell_compatibility_level;
 
 extern int locale_mb_cur_max;
 
+#ifdef COMPILER
+extern char* bashc_outpath;
+extern FILE* bashc_output;
+#endif
+
 /* Structure to pass around that holds a bitmap of file descriptors
    to close, and the size of that structure.  Used in execute_cmd.c. */
 struct fd_bitmap {
