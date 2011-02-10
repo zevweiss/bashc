@@ -82,6 +82,10 @@ extern int get_tty_state __P((void));
 #  include "bashline.h"
 #endif
 
+#if defined (COMPILER)
+#  include "compiler.h"
+#endif
+
 #include <tilde/tilde.h>
 #include <glob/strmatch.h>
 
@@ -738,9 +742,18 @@ main (argc, argv, env)
 	start_debugger ();
 
 #if defined (ONESHOT)
+#if defined (COMPILER)
+      if (!bashc_outpath) {
+#endif
       executing = 1;
       run_one_command (command_execution_string);
       exit_shell (last_command_exit_value);
+#if defined(COMPILER)
+      } else {
+	with_input_from_string (command_execution_string, "-c");
+	goto read_and_execute;
+      }
+#endif
 #else /* ONESHOT */
       with_input_from_string (command_execution_string, "-c");
       goto read_and_execute;
@@ -800,7 +813,7 @@ main (argc, argv, env)
       get_tty_state ();
     }
 
-#if !defined (ONESHOT)
+#if !defined (ONESHOT) || defined(COMPILER)
  read_and_execute:
 #endif /* !ONESHOT */
 
