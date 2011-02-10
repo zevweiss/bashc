@@ -435,6 +435,27 @@ static __must_use struct ctioctx* compile_connection(COMMAND* cmd,
 	return ioc;
 }
 
+static __must_use struct ctioctx* compile_if(COMMAND* cmd, struct ctioctx* ioc,
+                                             int flags)
+{
+	struct if_com* ifc = cmd->value.If;
+
+	compile_command(ifc->test,ioc,flags);
+
+	make_cif("!G_status");
+
+	compile_command(ifc->true_case,ioc,flags);
+
+	if (ifc->false_case) {
+		make_celse();
+		compile_command(ifc->false_case,ioc,flags);
+	}
+
+	make_cendif();
+
+	return ioc;
+}
+
 static __must_use struct ctioctx* compile_command(COMMAND* cmd, struct ctioctx* ioc,
                                                   int flags)
 {
@@ -444,7 +465,6 @@ static __must_use struct ctioctx* compile_command(COMMAND* cmd, struct ctioctx* 
 	case cm_for:
 	case cm_case:
 	case cm_while:
-	case cm_if:
 	case cm_select:
 	case cm_function_def:
 	case cm_until:
@@ -455,6 +475,10 @@ static __must_use struct ctioctx* compile_command(COMMAND* cmd, struct ctioctx* 
 	case cm_subshell:
 	case cm_coproc:
 		NYI("(command type %d)",cmd->type);
+		break;
+
+	case cm_if:
+		ioc = compile_if(cmd,ioc,flags);
 		break;
 
 	case cm_simple:
