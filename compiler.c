@@ -496,6 +496,8 @@ static __must_use struct ctioctx* compile_while(COMMAND* cmd, struct ctioctx* io
 static __must_use struct ctioctx* compile_command(COMMAND* cmd, struct ctioctx* ioc,
                                                   int flags)
 {
+	if (!cmd)
+		return ioc;
 
 	switch (cmd->type) {
 
