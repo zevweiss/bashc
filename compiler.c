@@ -340,8 +340,9 @@ static __must_use struct ctioctx* compile_builtin(sh_builtin_func_t* builtin,
 {
 	struct simple_com* sc = cmd->value.Simple;
 
-	if (builtin == echo_builtin) {
-		/* cheat and use /bin/echo for now */
+	if (builtin == echo_builtin
+	    || builtin == test_builtin) {
+		/* cheat and use system binaries for now */
 		return compile_simple_command(cmd,1,ioc,flags);
 	}
 
