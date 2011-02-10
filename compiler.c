@@ -412,8 +412,14 @@ static __must_use struct ctioctx* compile_connection(COMMAND* cmd,
 		break;
 
 	case AND_AND:
+		ioc = compile_command(conn->first,ioc,flags);
+		make_cif("!G_status");
+		ioc = compile_command(conn->second,ioc,flags);
+		make_cendif();
+		break;
+
 	case OR_OR:
-		NYI("&&, and || connectors");
+		NYI("|| connector");
 		break;
 
 	default:
