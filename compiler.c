@@ -124,8 +124,8 @@ static void cencode_string(const char* str)
 }
 
 /* Returns a pointer to a malloc()ed string of the name of a new
- * variable, with option "base" name */
-static __must_use char* new_variable(const char* base)
+ * identifier, with option "base" name */
+static __must_use char* new_ident(const char* base)
 {
 	static unsigned int idnum = 0;
 	const char* baseid = base ? base : "var";
@@ -284,7 +284,7 @@ static __must_use struct ctioctx* compile_builtin(sh_builtin_func_t* builtin,
 /* return the variable identifier */
 static __must_use char* build_argv(WORD_LIST* wds)
 {
-	char* argvname = new_variable("argv");
+	char* argvname = new_ident("argv");
 	icout("static char* const %s[] = ",argvname);
 	wordlist_to_cstr_array(wds,1);
 	cout(";\n");
@@ -321,7 +321,7 @@ static __must_use  struct ctioctx* compile_simple_command(COMMAND* cmd,
 	startblock();
 	argvname = build_argv(sc->words);
 
-	rtiocname = new_variable("rtioc");
+	rtiocname = new_ident("rtioc");
 	make_rtioctx(ioc,rtiocname);
 
 	icout("G_status = %sforkexec_argv(%s,%s,",
@@ -345,8 +345,8 @@ static __must_use struct ctioctx* compile_pipe(COMMAND* first, COMMAND* second,
 	char* pidname;
 	int ofst;
 
-	pipeends = new_variable("pipe");
-	pidname = new_variable("pid");
+	pipeends = new_ident("pipe");
+	pidname = new_ident("pid");
 
 	startblock();
 
@@ -456,6 +456,39 @@ static __must_use struct ctioctx* compile_if(COMMAND* cmd, struct ctioctx* ioc,
 	return ioc;
 }
 
+static __must_use struct ctioctx* compile_while(COMMAND* cmd, struct ctioctx* ioc,
+                                                int flags)
+{
+	char* entrypt;
+	char* exitpt;
+	char* loopstatus;
+	struct while_com* wh = cmd->value.While;
+
+	entrypt = new_ident("whileentry");
+	exitpt = new_ident("whileexit");
+	loopstatus = new_ident("whilestatus");
+
+	icoutsn("int %s = 0",loopstatus);
+	coutn("%s:",entrypt);
+
+	startblock();
+	compile_command(wh->test,ioc,flags);
+
+	make_cif("G_status");
+	icoutsn("G_status = %s",loopstatus);
+	icoutsn("goto %s",exitpt);
+	make_cendif();
+
+	compile_command(wh->action,ioc,flags);
+	icoutsn("%s = G_status",loopstatus);
+	icoutsn("goto %s",entrypt);
+	endblock();
+
+	coutn("%s:",exitpt);
+
+	return ioc;
+}
+
 static __must_use struct ctioctx* compile_command(COMMAND* cmd, struct ctioctx* ioc,
                                                   int flags)
 {
@@ -464,7 +497,6 @@ static __must_use struct ctioctx* compile_command(COMMAND* cmd, struct ctioctx* 
 
 	case cm_for:
 	case cm_case:
-	case cm_while:
 	case cm_select:
 	case cm_function_def:
 	case cm_until:
@@ -475,6 +507,10 @@ static __must_use struct ctioctx* compile_command(COMMAND* cmd, struct ctioctx* 
 	case cm_subshell:
 	case cm_coproc:
 		NYI("(command type %d)",cmd->type);
+		break;
+
+	case cm_while:
+		ioc = compile_while(cmd,ioc,flags);
 		break;
 
 	case cm_if:
