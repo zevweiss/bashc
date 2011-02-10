@@ -457,7 +457,7 @@ static __must_use struct ctioctx* compile_if(COMMAND* cmd, struct ctioctx* ioc,
 }
 
 static __must_use struct ctioctx* compile_while(COMMAND* cmd, struct ctioctx* ioc,
-                                                int flags)
+                                                int flags, int invert)
 {
 	char* entrypt;
 	char* exitpt;
@@ -474,7 +474,7 @@ static __must_use struct ctioctx* compile_while(COMMAND* cmd, struct ctioctx* io
 	startblock();
 	compile_command(wh->test,ioc,flags);
 
-	make_cif("G_status");
+	make_cif("%sG_status",invert ? "!" : "");
 	icoutsn("G_status = %s",loopstatus);
 	icoutsn("goto %s",exitpt);
 	make_cendif();
@@ -499,7 +499,6 @@ static __must_use struct ctioctx* compile_command(COMMAND* cmd, struct ctioctx* 
 	case cm_case:
 	case cm_select:
 	case cm_function_def:
-	case cm_until:
 	case cm_group:
 	case cm_arith:
 	case cm_cond:
@@ -509,8 +508,12 @@ static __must_use struct ctioctx* compile_command(COMMAND* cmd, struct ctioctx* 
 		NYI("(command type %d)",cmd->type);
 		break;
 
+	case cm_until:
+		ioc = compile_while(cmd,ioc,flags,1);
+		break;
+
 	case cm_while:
-		ioc = compile_while(cmd,ioc,flags);
+		ioc = compile_while(cmd,ioc,flags,0);
 		break;
 
 	case cm_if:
