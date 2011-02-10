@@ -240,9 +240,12 @@ static void make_rtioctx(struct ctioctx* ioc, const char* name)
 	}
 }
 
+/* Constants for flags arguments to compile_* functions */
+#define CF_BACKGROUND 1
+
 static struct ctioctx* compile_simple_command(COMMAND* cmd, int override_builtin,
-                                              struct ctioctx* ioc);
-static struct ctioctx* compile_command(COMMAND* cmd, struct ctioctx* ioc);
+                                              struct ctioctx* ioc, int flags);
+static struct ctioctx* compile_command(COMMAND* cmd, struct ctioctx* ioc, int flags);
 
 static void comment_simple_command(struct simple_com* sc)
 {
@@ -255,7 +258,8 @@ static void comment_simple_command(struct simple_com* sc)
 }
 
 static __must_use struct ctioctx* compile_builtin(sh_builtin_func_t* builtin,
-                                                  COMMAND* cmd, struct ctioctx* ioc)
+                                                  COMMAND* cmd, struct ctioctx* ioc,
+                                                  int flags)
 {
 	struct simple_com* sc = cmd->value.Simple;
 
@@ -266,9 +270,10 @@ static __must_use struct ctioctx* compile_builtin(sh_builtin_func_t* builtin,
 		make_cendif();
 		cout("\n");
 	} else if (builtin == echo_builtin
-	           || builtin == false_builtin) {
+	           || builtin == false_builtin
+	           || builtin == colon_builtin) {
 		/* cheat and use system binaries for now */
-		compile_simple_command(cmd,1,ioc);
+		compile_simple_command(cmd,1,ioc,flags);
 	} else {
 		NYI("%s builtin",sc->words->word->word);
 	}
@@ -286,9 +291,16 @@ static __must_use char* build_argv(WORD_LIST* wds)
 	return argvname;
 }
 
+static void output_flags(int f)
+{
+	cout("0");
+	if (f & CF_BACKGROUND) cout("|FE_BACKGROUND");
+}
+
+/* FIXME: 'override_builtin' is an ugly hack. */
 static __must_use  struct ctioctx* compile_simple_command(COMMAND* cmd,
                                                           int override_builtin,
-                                                          struct ctioctx* ioc)
+                                                          struct ctioctx* ioc, int flags)
 {
 	sh_builtin_func_t* builtin;
 	struct simple_com* sc = cmd->value.Simple;
@@ -302,7 +314,7 @@ static __must_use  struct ctioctx* compile_simple_command(COMMAND* cmd,
 
 	if (!override_builtin &&
 	    (builtin = find_shell_builtin(sc->words->word->word)))
-		return compile_builtin(builtin,cmd,ioc);
+		return compile_builtin(builtin,cmd,ioc,flags);
 
 	comment_simple_command(sc);
 
@@ -312,7 +324,10 @@ static __must_use  struct ctioctx* compile_simple_command(COMMAND* cmd,
 	rtiocname = new_variable("rtioc");
 	make_rtioctx(ioc,rtiocname);
 
-	icoutsn("G_status = forkexec_argv(%s,%s)",argvname,rtiocname);
+	icout("G_status = forkexec_argv(%s,%s,",argvname,rtiocname);
+	output_flags(flags);
+	coutsn(")");
+
 	endblock();
 	cout("\n");
 
@@ -323,7 +338,7 @@ static __must_use  struct ctioctx* compile_simple_command(COMMAND* cmd,
 }
 
 static __must_use struct ctioctx* compile_pipe(COMMAND* first, COMMAND* second,
-                                               struct ctioctx* ioc)
+                                               struct ctioctx* ioc, int flags)
 {
 	char* pipeends;
 	char* pidname;
@@ -346,7 +361,7 @@ static __must_use struct ctioctx* compile_pipe(COMMAND* first, COMMAND* second,
 	asprintf(&ioc->fdnames[ofst+1][0],"%s[0]",pipeends);
 	ioc->fdnames[ofst+1][1] = strdup("IO_CLOSE_FD");
 
-	ioc = compile_command(first,ioc);
+	ioc = compile_command(first,ioc,flags);
 	ioc = ioc_grow(ioc,-2);
 
 	icoutsn("close(%s[1])",pipeends);
@@ -356,7 +371,7 @@ static __must_use struct ctioctx* compile_pipe(COMMAND* first, COMMAND* second,
 	asprintf(&ioc->fdnames[ofst][0],"%s[0]",pipeends);
 	ioc->fdnames[ofst][1] = strdup("0");
 
-	ioc = compile_command(second,ioc);
+	ioc = compile_command(second,ioc,flags);
 	ioc = ioc_grow(ioc,-1);
 
 	icoutsn("close(%s[0])",pipeends);
@@ -377,24 +392,28 @@ static __must_use struct ctioctx* compile_pipe(COMMAND* first, COMMAND* second,
 }
 
 static __must_use struct ctioctx* compile_connection(COMMAND* cmd,
-                                                     struct ctioctx* ioc)
+                                                     struct ctioctx* ioc, int flags)
 {
 	struct connection* conn = cmd->value.Connection;
 
-	switch (cmd->value.Connection->connector) {
+	switch (conn->connector) {
 	case ';':
-		ioc = compile_command(conn->first,ioc);
-		ioc = compile_command(conn->second,ioc);
+		ioc = compile_command(conn->first,ioc,flags);
+		ioc = compile_command(conn->second,ioc,flags);
 		break;
 
 	case '|':
-		ioc = compile_pipe(conn->first,conn->second,ioc);
+		ioc = compile_pipe(conn->first,conn->second,ioc,flags);
 		break;
 
 	case '&':
+		ioc = compile_command(conn->first,ioc,flags|CF_BACKGROUND);
+		ioc = compile_command(conn->second,ioc,flags);
+		break;
+
 	case AND_AND:
 	case OR_OR:
-		NYI("&, &&, and || connectors");
+		NYI("&&, and || connectors");
 		break;
 
 	default:
@@ -405,7 +424,8 @@ static __must_use struct ctioctx* compile_connection(COMMAND* cmd,
 	return ioc;
 }
 
-static __must_use struct ctioctx* compile_command(COMMAND* cmd, struct ctioctx* ioc)
+static __must_use struct ctioctx* compile_command(COMMAND* cmd, struct ctioctx* ioc,
+                                                  int flags)
 {
 
 	switch (cmd->type) {
@@ -427,11 +447,11 @@ static __must_use struct ctioctx* compile_command(COMMAND* cmd, struct ctioctx* 
 		break;
 
 	case cm_simple:
-		ioc = compile_simple_command(cmd,0,ioc);
+		ioc = compile_simple_command(cmd,0,ioc,flags);
 		break;
 
 	case cm_connection:
-		ioc = compile_connection(cmd,ioc);
+		ioc = compile_connection(cmd,ioc,flags);
 		break;
 
 	default:
@@ -470,7 +490,7 @@ int compile_input(void)
 			ret = 1;
 			EOF_Reached = EOF;
 		} else if (global_command) {
-			ioc = compile_command(global_command,ioc);
+			ioc = compile_command(global_command,ioc,0);
 			dispose_command(global_command);
 			global_command = NULL;
 		}

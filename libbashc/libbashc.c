@@ -34,7 +34,7 @@ void exec_argv(char* const argv[], struct rtioctx* ioc)
 	exit(1);
 }
 
-int forkexec_argv(char* const argv[], struct rtioctx* ioc)
+int forkexec_argv(char* const argv[], struct rtioctx* ioc, int flags)
 {
 	pid_t pid;
 	int status;
@@ -45,9 +45,10 @@ int forkexec_argv(char* const argv[], struct rtioctx* ioc)
 	} else if (pid == -1) {
 		/* fork failed */
 		return 1;
-	} else {
+	} else if (!(flags & FE_BACKGROUND)) {
 		/* parent */
 		waitpid(pid,&status,0);
 		return WEXITSTATUS(status);
-	}
+	} else
+		return 0;
 }
