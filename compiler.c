@@ -324,7 +324,8 @@ static __must_use  struct ctioctx* compile_simple_command(COMMAND* cmd,
 	rtiocname = new_variable("rtioc");
 	make_rtioctx(ioc,rtiocname);
 
-	icout("G_status = forkexec_argv(%s,%s,",argvname,rtiocname);
+	icout("G_status = %sforkexec_argv(%s,%s,",
+	      (cmd->flags & CMD_INVERT_RETURN) ? "!" : "",argvname,rtiocname);
 	output_flags(flags);
 	coutsn(")");
 
@@ -397,6 +398,7 @@ static __must_use struct ctioctx* compile_connection(COMMAND* cmd,
 	struct connection* conn = cmd->value.Connection;
 
 	switch (conn->connector) {
+
 	case ';':
 		ioc = compile_command(conn->first,ioc,flags);
 		ioc = compile_command(conn->second,ioc,flags);
