@@ -10,6 +10,8 @@
 #  include <unistd.h>
 #endif
 
+#include <errno.h>
+
 #include "shell.h"
 #include "flags.h"
 #include "builtins.h"
@@ -21,6 +23,7 @@
 #include "compiler.h"
 
 #define NYI(...) internal_warning("NYI: compilation of "__VA_ARGS__)
+#define EXPNYI(...) NYI("non-literal words (expansion, etc)")
 
 #define __must_use __attribute__((warn_unused_result))
 
@@ -49,7 +52,30 @@ static const char bashc_footer[] =
 "}\n"
 ;
 
+struct loopnest {
+	struct loopnest* next;
+	char* entry;
+	char* exit;
+};
+
 static int indent_level = 0;
+static struct loopnest* loopstack = NULL;
+
+static void push_loopnest(char* entry, char* exit)
+{
+	struct loopnest* newtop = malloc(sizeof(struct loopnest));
+	newtop->entry = entry;
+	newtop->exit = exit;
+	newtop->next = loopstack;
+	loopstack = newtop;
+}
+
+static void pop_loopnest(void)
+{
+	struct loopnest* prevtop = loopstack->next;
+	free(loopstack);
+	loopstack = prevtop;
+}
 
 static void indent(void)
 {
@@ -134,22 +160,34 @@ static __must_use char* new_ident(const char* base)
 	return str;
 }
 
-static void wordlist_to_cstr_array(WORD_LIST* wds, int addnullterm)
+/*
+ * Outputs a C array of string literals, optionally terminated by a
+ * NULL if 'addnullterm' is true.  Returns the length of the array,
+ * including the NULL if present.
+ */
+static int wordlist_to_cstr_array(WORD_LIST* wds, int addnullterm)
 {
 	WORD_LIST* wd;
+	int n;
 
 	cout("{ ");
 
-	for (wd = wds; wd; wd = wd->next) {
+	for (n = 0, wd = wds; wd; wd = wd->next, n++) {
+		if (wd->word->flags)
+			EXPNYI();
 		cout("\"");
 		cencode_string(wd->word->word);
 		cout("\", ");
 	}
 
-	if (addnullterm)
+	if (addnullterm) {
+		n += 1;
 		cout("NULL, ");
+	}
 
 	cout("}");
+
+	return n;
 }
 
 /* Compile-time I/O context.  Strings put in the fdnames array should
@@ -247,14 +285,53 @@ static struct ctioctx* compile_simple_command(COMMAND* cmd, int override_builtin
                                               struct ctioctx* ioc, int flags);
 static struct ctioctx* compile_command(COMMAND* cmd, struct ctioctx* ioc, int flags);
 
-static void comment_simple_command(struct simple_com* sc)
+static void comment_command(const char* label, COMMAND* cmd)
 {
-	WORD_LIST* word;
+	icout("/* ");
+	if (label)
+		cout("%s: ",label);
+	coutn("$ %s */",make_command_string(cmd));
+}
 
-	icout("/* $ ");
-	for (word = sc->words; word; word = word->next)
-		cout("%s%s",word->word->word,word->next ? " " : "");
-	cout(" */\n");
+static void compile_breakcont(int isbreak, WORD_LIST* args)
+{
+	int i;
+	struct loopnest* loop;
+	long level;
+	char* levelstr;
+	char* endptr;
+	char* cmdname = isbreak ? "break" : "continue";
+
+	if (args->next && args->next->next) {
+		report_error("%s: too many arguments",cmdname);
+		return;
+	}
+
+	if (args->next) {
+		if (args->next->word->flags) {
+			EXPNYI();
+			return;
+		}
+		levelstr = args->next->word->word;
+		errno = 0;
+		level = strtol(levelstr,&endptr,10);
+		/* this is slightly more restrictive integer-parsing than
+		 * interpreted bash (which allows trailing whitespace) */
+		if (((level == LONG_MIN || level == LONG_MAX) && errno != 0) || *endptr) {
+			report_error("%s: %s: numeric argument required",cmdname,levelstr);
+			return;
+		}
+	} else
+		level = 1;
+
+	if (!loopstack) {
+		report_error("'%s' only meaningful inside a loop",cmdname);
+		return;
+	}
+
+	for (i = 0, loop = loopstack; i < (level-1) && loop; i++, loop = loop->next);
+
+	icoutsn("goto %s",isbreak ? loop->exit : loop->entry);
 }
 
 static __must_use struct ctioctx* compile_builtin(sh_builtin_func_t* builtin,
@@ -263,21 +340,24 @@ static __must_use struct ctioctx* compile_builtin(sh_builtin_func_t* builtin,
 {
 	struct simple_com* sc = cmd->value.Simple;
 
+	if (builtin == echo_builtin) {
+		/* cheat and use /bin/echo for now */
+		return compile_simple_command(cmd,1,ioc,flags);
+	}
+
 	if (builtin == cd_builtin) {
-		comment_simple_command(sc);
 		make_cif("chdir(\"%s\")",sc->words->next->word->word);
 		icoutsn("perror(\"chdir\")");
 		make_cendif();
 		cout("\n");
-	} else if (builtin == echo_builtin) {
-		/* cheat and use /bin/echo for now */
-		compile_simple_command(cmd,1,ioc,flags);
 	} else if (builtin == false_builtin) {
-		comment_simple_command(sc);
 		icoutsn("G_status = 1");
 	} else if (builtin == colon_builtin) {
-		comment_simple_command(sc);
 		icoutsn("G_status = 0");
+	} else if (builtin == break_builtin) {
+		compile_breakcont(1, sc->words);
+	} else if (builtin == continue_builtin) {
+		compile_breakcont(0, sc->words);
 	} else {
 		NYI("%s builtin",sc->words->word->word);
 	}
@@ -319,8 +399,6 @@ static __must_use  struct ctioctx* compile_simple_command(COMMAND* cmd,
 	if (!override_builtin &&
 	    (builtin = find_shell_builtin(sc->words->word->word)))
 		return compile_builtin(builtin,cmd,ioc,flags);
-
-	comment_simple_command(sc);
 
 	startblock();
 	argvname = build_argv(sc->words);
@@ -444,18 +522,22 @@ static __must_use struct ctioctx* compile_if(COMMAND* cmd, struct ctioctx* ioc,
 {
 	struct if_com* ifc = cmd->value.If;
 
+	ccomment("if");
 	compile_command(ifc->test,ioc,flags);
 
 	make_cif("!G_status");
+	ccomment("then");
 
 	compile_command(ifc->true_case,ioc,flags);
 
 	if (ifc->false_case) {
 		make_celse();
+		ccomment("else");
 		compile_command(ifc->false_case,ioc,flags);
 	}
 
 	make_cendif();
+	ccomment("fi");
 
 	return ioc;
 }
@@ -475,6 +557,7 @@ static __must_use struct ctioctx* compile_while(COMMAND* cmd, struct ctioctx* io
 	icoutsn("int %s = 0",loopstatus);
 	coutn("%s:",entrypt);
 
+	push_loopnest(entrypt,exitpt);
 	startblock();
 	compile_command(wh->test,ioc,flags);
 
@@ -488,7 +571,12 @@ static __must_use struct ctioctx* compile_while(COMMAND* cmd, struct ctioctx* io
 	icoutsn("goto %s",entrypt);
 	endblock();
 
+	pop_loopnest();
 	coutn("%s:",exitpt);
+
+	free(entrypt);
+	free(exitpt);
+	free(loopstatus);
 
 	return ioc;
 }
