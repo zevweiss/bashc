@@ -269,11 +269,15 @@ static __must_use struct ctioctx* compile_builtin(sh_builtin_func_t* builtin,
 		icoutsn("perror(\"chdir\")");
 		make_cendif();
 		cout("\n");
-	} else if (builtin == echo_builtin
-	           || builtin == false_builtin
-	           || builtin == colon_builtin) {
-		/* cheat and use system binaries for now */
+	} else if (builtin == echo_builtin) {
+		/* cheat and use /bin/echo for now */
 		compile_simple_command(cmd,1,ioc,flags);
+	} else if (builtin == false_builtin) {
+		comment_simple_command(sc);
+		icoutsn("G_status = 1");
+	} else if (builtin == colon_builtin) {
+		comment_simple_command(sc);
+		icoutsn("G_status = 0");
 	} else {
 		NYI("%s builtin",sc->words->word->word);
 	}
