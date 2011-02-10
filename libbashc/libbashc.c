@@ -44,6 +44,7 @@ int forkexec_argv(char* const argv[], struct rtioctx* ioc, int flags)
 		exec_argv(argv,ioc);
 	} else if (pid == -1) {
 		/* fork failed */
+		perror("fork");
 		return 1;
 	} else if (!(flags & FE_BACKGROUND)) {
 		/* parent */
