@@ -34,7 +34,11 @@ void exec_argv(char* const argv[], struct rtioctx* ioc)
 	exit(1);
 }
 
-int forkexec_argv(char* const argv[], struct rtioctx* ioc, int flags)
+/*
+ * Returns -1 on error, exit status of a non-background command, or
+ * the pid of the newly-forked background command.
+ */
+pid_t forkexec_argv(char* const argv[], struct rtioctx* ioc, int flags)
 {
 	pid_t pid;
 	int status;
@@ -45,11 +49,11 @@ int forkexec_argv(char* const argv[], struct rtioctx* ioc, int flags)
 	} else if (pid == -1) {
 		/* fork failed */
 		perror("fork");
-		return 1;
+		return -1;
 	} else if (!(flags & FE_BACKGROUND)) {
 		/* parent */
 		waitpid(pid,&status,0);
 		return WEXITSTATUS(status);
 	} else
-		return 0;
+		return pid;
 }

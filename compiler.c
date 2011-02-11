@@ -415,6 +415,8 @@ static __must_use  struct ctioctx* compile_simple_command(COMMAND* cmd,
 	struct simple_com* sc = cmd->value.Simple;
 	char* argvname;
 	char* rtiocname;
+	char* retname;
+	const char* invt = (cmd->flags & CMD_INVERT_RETURN) ? "!" : "";
 
 	if (sc->redirects) {
 		NYI("redirects");
@@ -425,22 +427,30 @@ static __must_use  struct ctioctx* compile_simple_command(COMMAND* cmd,
 	    (builtin = find_shell_builtin(sc->words->word->word)))
 		return compile_builtin(builtin,cmd,ioc,flags);
 
+	rtiocname = new_ident("rtioc");
+	retname = new_ident("retstatus");
+
 	startblock();
+	icoutsn("pid_t %s;",retname);
 	argvname = build_argv(sc->words);
 
-	rtiocname = new_ident("rtioc");
 	make_rtioctx(ioc,rtiocname);
 
-	icout("G_status = %sforkexec_argv(%s,%s,",
-	      (cmd->flags & CMD_INVERT_RETURN) ? "!" : "",argvname,rtiocname);
+	icout("%s = %sforkexec_argv(%s,%s,",retname,invt,argvname,rtiocname);
 	output_flags(flags);
 	coutsn(")");
+
+	if (flags & CF_BACKGROUND) {
+		icoutsn("G_status = 0");
+	} else
+		icoutsn("G_status = %s",retname);
 
 	endblock();
 	cout("\n");
 
 	free(rtiocname);
 	free(argvname);
+	free(retname);
 
 	return ioc;
 }
@@ -453,7 +463,7 @@ static __must_use struct ctioctx* compile_pipe(COMMAND* first, COMMAND* second,
 	int ofst;
 
 	pipeends = new_ident("pipe");
-	pidname = new_ident("pid");
+	pidname = new_ident("bgpid");
 
 	startblock();
 
@@ -469,7 +479,7 @@ static __must_use struct ctioctx* compile_pipe(COMMAND* first, COMMAND* second,
 	asprintf(&ioc->fdnames[ofst+1][0],"%s[0]",pipeends);
 	ioc->fdnames[ofst+1][1] = strdup("IO_CLOSE_FD");
 
-	ioc = compile_command(first,ioc,flags);
+	ioc = compile_command(first,ioc,flags|CF_BACKGROUND);
 	ioc = ioc_grow(ioc,-2);
 
 	icoutsn("close(%s[1])",pipeends);
@@ -483,6 +493,8 @@ static __must_use struct ctioctx* compile_pipe(COMMAND* first, COMMAND* second,
 	ioc = ioc_grow(ioc,-1);
 
 	icoutsn("close(%s[0])",pipeends);
+
+	icoutsn("waitpid(%s,NULL,0)",pidname);
 
 	make_celse();
 
