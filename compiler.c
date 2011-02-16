@@ -86,45 +86,42 @@ static void indent(void)
 
 #define cout(...) fprintf(bashc_output,__VA_ARGS__)
 #define coutn(...) do { fprintf(bashc_output,__VA_ARGS__); cout("\n"); } while (0)
-#define coutsn(...) do { fprintf(bashc_output,__VA_ARGS__); cout(";\n"); } while (0)
+#define coutsn(...) do { fprintf(bashc_output,__VA_ARGS__); coutn(";"); } while (0)
 #define icout(...) do { indent(); cout(__VA_ARGS__); } while (0)
-#define icoutsn(...) do { indent(); cout(__VA_ARGS__); cout(";\n"); } while (0)
+#define icoutn(...) do { indent(); coutn(__VA_ARGS__); } while (0)
+#define icoutsn(...) do { indent(); coutsn(__VA_ARGS__); } while (0)
 
 #define make_cif(...) do { \
-		indent(); \
-		cout("if ("); \
+		icout("if ("); \
 		cout(__VA_ARGS__); \
-		cout(") {\n"); \
+		coutn(") {"); \
 		++indent_level; \
 	} while (0)
 
 #define make_celseif(...) do { \
 		--indent_level; \
-		indent(); \
-		cout("} else if ("); \
+		icout("} else if ("); \
 		cout(__VA_ARGS__); \
-		cout(") {\n"); \
+		coutn(") {"); \
 		++indent_level; \
 	} while (0)
 
 #define make_celse() do { \
 		--indent_level; \
-		indent(); \
-		cout("} else {\n"); \
+		icoutn("} else {"); \
 		++indent_level; \
 	} while (0)
 
-#define make_cendif() do { --indent_level; indent(); cout("}\n"); } while (0)
+#define make_cendif() do { --indent_level; icoutn("}"); } while (0)
 
 #define ccomment(...) do { \
-		indent(); \
-		cout("/* "); \
+		icout("/* "); \
 		cout(__VA_ARGS__); \
-		cout(" */\n"); \
+		coutn(" */"); \
 	} while (0)
 
-#define startblock() do { icout("{\n"); ++indent_level; } while (0)
-#define endblock() do { --indent_level; icout("}\n"); } while (0)
+#define startblock() do { icoutn("{"); ++indent_level; } while (0)
+#define endblock() do { --indent_level; icoutn("}"); } while (0)
 
 #define make_failure() do { icoutsn("G_status = 1"); } while (0)
 #define make_success() do { icoutsn("G_status = 0"); } while (0)
@@ -431,7 +428,7 @@ static __must_use  struct ctioctx* compile_simple_command(COMMAND* cmd,
 	retname = new_ident("retstatus");
 
 	startblock();
-	icoutsn("pid_t %s;",retname);
+	icoutsn("pid_t %s",retname);
 	argvname = build_argv(sc->words);
 
 	make_rtioctx(ioc,rtiocname);
