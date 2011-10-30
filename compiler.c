@@ -435,7 +435,7 @@ static __must_use  struct ctioctx* compile_simple_command(COMMAND* cmd,
 	make_rtioctx(ioc,rtiocname);
 
 	if (retname)
-	        icout("%s = ",retname);
+		icout("%s = ",retname);
 	icout("%sforkexec_argv(%s,%s,",invt,argvname,rtiocname);
 	output_flags(flags);
 	coutsn(")");
