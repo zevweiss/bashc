@@ -425,15 +425,18 @@ static __must_use  struct ctioctx* compile_simple_command(COMMAND* cmd,
 		return compile_builtin(builtin,cmd,ioc,flags);
 
 	rtiocname = new_ident("rtioc");
-	retname = new_ident("retstatus");
+	retname = (flags & CF_BACKGROUND) ? NULL : new_ident("retstatus");
 
 	startblock();
-	icoutsn("pid_t %s",retname);
+	if (retname)
+		icoutsn("pid_t %s",retname);
 	argvname = build_argv(sc->words);
 
 	make_rtioctx(ioc,rtiocname);
 
-	icout("%s = %sforkexec_argv(%s,%s,",retname,invt,argvname,rtiocname);
+	if (retname)
+	        icout("%s = ",retname);
+	icout("%sforkexec_argv(%s,%s,",invt,argvname,rtiocname);
 	output_flags(flags);
 	coutsn(")");
 
