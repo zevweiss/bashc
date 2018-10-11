@@ -798,6 +798,7 @@ enable_brace_expansion
 enable_casemod_attributes
 enable_casemod_expansions
 enable_command_timing
+enable_compiler
 enable_cond_command
 enable_cond_regexp
 enable_coprocesses
@@ -1480,6 +1481,7 @@ Optional Features:
   --enable-casemod-expansions
                           include case-modifying word expansions
   --enable-command-timing enable the time reserved word and command timing
+  --enable-compiler       enable compilation mode
   --enable-cond-command   enable the conditional command
   --enable-cond-regexp    enable extended regular expression matching in
                           conditional commands
@@ -3041,6 +3043,11 @@ if test "${enable_command_timing+set}" = set; then :
   enableval=$enable_command_timing; opt_command_timing=$enableval
 fi
 
+# Check whether --enable-compiler was given.
+if test "${enable_compiler+set}" = set; then :
+  enableval=$enable_compiler; opt_compiler=$enableval
+fi
+
 # Check whether --enable-cond-command was given.
 if test "${enable_cond_command+set}" = set; then :
   enableval=$enable_cond_command; opt_cond_command=$enableval
@@ -3251,6 +3258,10 @@ $as_echo "#define DISABLED_BUILTINS 1" >>confdefs.h
 fi
 if test $opt_command_timing = yes; then
 $as_echo "#define COMMAND_TIMING 1" >>confdefs.h
+
+fi
+if test $opt_compiler = yes; then
+$as_echo "#define COMPILER 1" >>confdefs.h
 
 fi
 if test $opt_xpg_echo = yes ; then

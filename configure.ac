@@ -210,6 +210,7 @@ AC_ARG_ENABLE(brace-expansion, AC_HELP_STRING([--enable-brace-expansion], [inclu
 AC_ARG_ENABLE(casemod-attributes, AC_HELP_STRING([--enable-casemod-attributes], [include case-modifying variable attributes]), opt_casemod_attrs=$enableval)
 AC_ARG_ENABLE(casemod-expansions, AC_HELP_STRING([--enable-casemod-expansions], [include case-modifying word expansions]), opt_casemod_expansions=$enableval)
 AC_ARG_ENABLE(command-timing, AC_HELP_STRING([--enable-command-timing], [enable the time reserved word and command timing]), opt_command_timing=$enableval)
+AC_ARG_ENABLE(compiler, AC_HELP_STRING([--enable-compiler], [enable compilation mode]), opt_compiler=$enableval)
 AC_ARG_ENABLE(cond-command, AC_HELP_STRING([--enable-cond-command], [enable the conditional command]), opt_cond_command=$enableval)
 AC_ARG_ENABLE(cond-regexp, AC_HELP_STRING([--enable-cond-regexp], [enable extended regular expression matching in conditional commands]), opt_cond_regexp=$enableval)
 AC_ARG_ENABLE(coprocesses, AC_HELP_STRING([--enable-coprocesses], [enable coprocess support and the coproc reserved word]), opt_coproc=$enableval)
@@ -291,6 +292,9 @@ AC_DEFINE(DISABLED_BUILTINS)
 fi
 if test $opt_command_timing = yes; then
 AC_DEFINE(COMMAND_TIMING)
+fi
+if test $opt_compiler = yes; then
+AC_DEFINE(COMPILER)
 fi
 if test $opt_xpg_echo = yes ; then
 AC_DEFINE(DEFAULT_ECHO_TO_XPG)
